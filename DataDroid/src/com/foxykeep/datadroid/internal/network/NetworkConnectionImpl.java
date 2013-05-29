@@ -19,8 +19,15 @@ import com.foxykeep.datadroid.network.NetworkConnection.Method;
 import com.foxykeep.datadroid.network.UserAgentUtils;
 import com.foxykeep.datadroid.util.DataDroidLog;
 
+import android.content.Context;
+import android.support.util.Base64;
+import android.text.TextUtils;
+import android.util.Log;
+
 import org.apache.http.HttpStatus;
 import org.apache.http.auth.UsernamePasswordCredentials;
+import org.apache.http.message.BasicNameValuePair;
+import org.apache.http.protocol.HTTP;
 
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -34,10 +41,10 @@ import java.net.URLEncoder;
 import java.security.KeyManagementException;
 import java.security.NoSuchAlgorithmException;
 import java.security.cert.X509Certificate;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map.Entry;
 import java.util.zip.GZIPInputStream;
-
 import javax.net.ssl.HostnameVerifier;
 import javax.net.ssl.HttpsURLConnection;
 import javax.net.ssl.SSLContext;
@@ -58,10 +65,7 @@ public final class NetworkConnectionImpl {
     private static final String ACCEPT_CHARSET_HEADER = "Accept-Charset";
     private static final String ACCEPT_ENCODING_HEADER = "Accept-Encoding";
     private static final String AUTHORIZATION_HEADER = "Authorization";
-    private static final String CONTENT_ENCODING_HEADER = "Content-Encoding";
-    private static final String CONTENT_TYPE_HEADER = "Content-Type";
     private static final String LOCATION_HEADER = "Location";
-    private static final String USER_AGENT_HEADER = "User-Agent";
 
     private static final String UTF8_CHARSET = "UTF-8";
 
@@ -78,9 +82,9 @@ public final class NetworkConnectionImpl {
      *
      * @param context The context to use for this operation. Used to generate the user agent if
      *            needed.
-     * @param url The webservice URL.
+     * @param urlValue The webservice URL.
      * @param method The request method to use.
-     * @param parameterMap The parameters to add to the request.
+     * @param parameterList The parameters to add to the request.
      * @param headerMap The headers to add to the request.
      * @param isGzipEnabled Whether the request will use gzip compression if available on the
      *            server.
@@ -92,7 +96,7 @@ public final class NetworkConnectionImpl {
      * @return The result of the webservice call.
      */
     public static ConnectionResult execute(Context context, String urlValue, Method method,
-            HashMap<String, String> parameterMap, HashMap<String, String> headerMap,
+            ArrayList<BasicNameValuePair> parameterList, HashMap<String, String> headerMap,
             boolean isGzipEnabled, String userAgent, String postText,
             UsernamePasswordCredentials credentials, String sessionId, Bitmap uploadImage, boolean isSslValidationEnabled) throws
             ConnectionException {
@@ -105,7 +109,7 @@ public final class NetworkConnectionImpl {
             if (headerMap == null) {
                 headerMap = new HashMap<String, String>();
             }
-            headerMap.put(USER_AGENT_HEADER, userAgent);
+            headerMap.put(HTTP.USER_AGENT, userAgent);
             if (isGzipEnabled) {
                 headerMap.put(ACCEPT_ENCODING_HEADER, "gzip");
             }
@@ -118,11 +122,21 @@ public final class NetworkConnectionImpl {
             }
 
             StringBuilder paramBuilder = new StringBuilder();
-            if (parameterMap != null && !parameterMap.isEmpty()) {
-                for (Entry<String, String> parameter : parameterMap.entrySet()) {
-                    paramBuilder.append(URLEncoder.encode(parameter.getKey(), UTF8_CHARSET));
+            if (parameterList != null && !parameterList.isEmpty()) {
+                for (int i = 0, size = parameterList.size(); i < size; i++) {
+                    BasicNameValuePair parameter = parameterList.get(i);
+                    String name = parameter.getName();
+                    String value = parameter.getValue();
+                    if (TextUtils.isEmpty(name)) {
+                        // Empty parameter name. Check the next one.
+                        continue;
+                    }
+                    if (value == null) {
+                        value = "";
+                    }
+                    paramBuilder.append(URLEncoder.encode(name, UTF8_CHARSET));
                     paramBuilder.append("=");
-                    paramBuilder.append(URLEncoder.encode(parameter.getValue(), UTF8_CHARSET));
+                    paramBuilder.append(URLEncoder.encode(value, UTF8_CHARSET));
                     paramBuilder.append("&");
                 }
             }
@@ -132,16 +146,20 @@ public final class NetworkConnectionImpl {
                 DataDroidLog.d(TAG, "Request url: " + urlValue);
                 DataDroidLog.d(TAG, "Method: " + method.toString());
 
-                if (parameterMap != null && !parameterMap.isEmpty()) {
+                if (parameterList != null && !parameterList.isEmpty()) {
                     DataDroidLog.d(TAG, "Parameters:");
-                    for (Entry<String, String> parameter : parameterMap.entrySet()) {
-                        String message = "- " + parameter.getKey() + " = " + parameter.getValue();
+                    for (int i = 0, size = parameterList.size(); i < size; i++) {
+                        BasicNameValuePair parameter = parameterList.get(i);
+                        String message = "- \"" + parameter.getName() + "\" = \""
+                                + parameter.getValue() + "\"";
                         DataDroidLog.d(TAG, message);
                     }
+
+                    DataDroidLog.d(TAG, "Parameters String: \"" + paramBuilder.toString() + "\"");
                 }
 
                 if (postText != null) {
-                    DataDroidLog.d(TAG, "Post body: " + postText);
+                    DataDroidLog.d(TAG, "Post data: " + postText);
                 }
 
                 if (headerMap != null && !headerMap.isEmpty()) {
@@ -157,10 +175,14 @@ public final class NetworkConnectionImpl {
             String outputText = null;
             switch (method) {
                 case GET:
-                    url = new URL(urlValue + "?" + paramBuilder.toString());
+                case DELETE:
+                    String fullUrlValue = urlValue;
+                    if (paramBuilder.length() > 0) {
+                        fullUrlValue += "?" + paramBuilder.toString();
+                    }
+                    url = new URL(fullUrlValue);
                     connection = (HttpURLConnection) url.openConnection();
                     break;
-                case DELETE:
                 case PUT:
                 case POST:
                     url = new URL(urlValue);
@@ -169,6 +191,9 @@ public final class NetworkConnectionImpl {
 
                     if (paramBuilder.length() > 0) {
                         outputText = paramBuilder.toString();
+                        headerMap.put(HTTP.CONTENT_TYPE, "application/x-www-form-urlencoded");
+                        headerMap.put(HTTP.CONTENT_LEN,
+                                String.valueOf(outputText.getBytes().length));
                     } else if (postText != null) {
                     	headerMap.put(CONTENT_TYPE_HEADER, "application/json");
                         outputText = postText;
@@ -201,8 +226,6 @@ public final class NetworkConnectionImpl {
             // Set the connection and read timeout
             connection.setConnectTimeout(OPERATION_TIMEOUT);
             connection.setReadTimeout(OPERATION_TIMEOUT);
-            
-            
             
             // Set the outputStream content for POST requests
             if (method == Method.PUT && uploadImage != null){
@@ -238,7 +261,7 @@ public final class NetworkConnectionImpl {
                 }
             }
 
-            String contentEncoding = connection.getHeaderField(CONTENT_ENCODING_HEADER);
+            String contentEncoding = connection.getHeaderField(HTTP.CONTENT_ENCODING);
 
             int responseCode = connection.getResponseCode();
             boolean isGzip = contentEncoding != null
