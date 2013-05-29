@@ -40,10 +40,10 @@ public final class DataDroidLog {
     /**
      * Whether the logs are enabled in release builds or not.
      */
-    private static final boolean ENABLE_LOGS_IN_RELEASE = false;
+    private static final boolean ENABLE_LOGS_IN_RELEASE = true;
 
     public static boolean canLog(int level) {
-        return (ENABLE_LOGS_IN_RELEASE || BuildConfig.DEBUG) && Log.isLoggable(LOG_TAG, level);
+        return true;// (ENABLE_LOGS_IN_RELEASE || BuildConfig.DEBUG) && Log.isLoggable(LOG_TAG, level);
     }
 
     public static void d(String tag, String message) {

@@ -9,6 +9,7 @@
 package com.foxykeep.datadroid.network;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 
 import com.foxykeep.datadroid.exception.ConnectionException;
 import com.foxykeep.datadroid.internal.network.NetworkConnectionImpl;
@@ -61,6 +62,8 @@ public final class NetworkConnection {
     private String mPostText = null;
     private UsernamePasswordCredentials mCredentials = null;
     private boolean mIsSslValidationEnabled = true;
+	private String mSessionId = null;
+	private Bitmap mUploadImage = null;
 
     /**
      * Create a {@link NetworkConnection}.
@@ -159,7 +162,6 @@ public final class NetworkConnection {
      */
     public NetworkConnection setPostText(String postText) {
         mPostText = postText;
-        mMethod = Method.POST;
         mParameterMap = null;
         return this;
     }
@@ -173,6 +175,16 @@ public final class NetworkConnection {
     public NetworkConnection setCredentials(UsernamePasswordCredentials credentials) {
         mCredentials = credentials;
         return this;
+    }
+    
+    public NetworkConnection setSessionId(String sessionId) {
+    	mSessionId = sessionId;
+    	return this;
+    }
+    
+    public NetworkConnection setPutBitmap(Bitmap uploadImage) {
+    	mUploadImage  = uploadImage;
+    	return this;
     }
 
     /**
@@ -193,7 +205,7 @@ public final class NetworkConnection {
      */
     public ConnectionResult execute() throws ConnectionException {
         return NetworkConnectionImpl.execute(mContext, mUrl, mMethod, mParameterMap,
-                mHeaderMap, mIsGzipEnabled, mUserAgent, mPostText, mCredentials,
+                mHeaderMap, mIsGzipEnabled, mUserAgent, mPostText, mCredentials, mSessionId, mUploadImage,
                 mIsSslValidationEnabled);
     }
 }

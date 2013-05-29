@@ -16,6 +16,7 @@ import com.foxykeep.datadroid.service.RequestService;
 import com.foxykeep.datadroid.util.ObjectUtils;
 
 import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Class used to store your request information : request type as well as parameters.
@@ -35,6 +36,7 @@ public final class Request implements Parcelable {
     private static final int TYPE_STRING = 9;
     private static final int TYPE_CHARSEQUENCE = 10;
     private static final int TYPE_PARCELABLE = 11;
+	private static final int TYPE_PARCELABLE_ARRAY = 12;
 
     private int mRequestType = -1;
     private boolean mMemoryCacheDataEnabled = false;
@@ -82,6 +84,9 @@ public final class Request implements Parcelable {
         return mMemoryCacheDataEnabled;
     }
 
+    public List<String> getParameterList(){
+    	return mParamList;
+    }
     /**
      * Add a boolean parameter to the request, replacing any existing value for the given name.
      *
@@ -244,6 +249,14 @@ public final class Request implements Parcelable {
         mParamList.add(name);
         mTypeList.add(TYPE_PARCELABLE);
         mBundle.putParcelable(name, value);
+        return this;
+    }
+    
+    public Request put(String name, Parcelable[] value) {
+        removeFromRequestData(name);
+        mParamList.add(name);
+        mTypeList.add(TYPE_PARCELABLE_ARRAY);
+        mBundle.putParcelableArray(name, value);
         return this;
     }
 
@@ -489,6 +502,10 @@ public final class Request implements Parcelable {
     public Parcelable getParcelable(String name) {
         return mBundle.getParcelable(name);
     }
+    
+    public Parcelable[] getParcelableArray(String name) {
+        return mBundle.getParcelableArray(name);
+    }
 
     /**
      * Sets the ClassLoader to use by the underlying Bundle when getting Parcelable objects.
@@ -579,6 +596,12 @@ public final class Request implements Parcelable {
                     case TYPE_PARCELABLE:
                         if (!ObjectUtils.safeEquals(mBundle.getParcelable(param),
                                 oParams.mBundle.getParcelable(param))) {
+                            return false;
+                        }
+                        break;
+                    case TYPE_PARCELABLE_ARRAY:
+                        if (!ObjectUtils.safeEquals(mBundle.getParcelableArray(param),
+                                oParams.mBundle.getParcelableArray(param))) {
                             return false;
                         }
                         break;

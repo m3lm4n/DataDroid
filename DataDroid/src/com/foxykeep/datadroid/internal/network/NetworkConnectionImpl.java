@@ -9,6 +9,7 @@
 package com.foxykeep.datadroid.internal.network;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.support.util.Base64;
 import android.util.Log;
 
@@ -22,6 +23,7 @@ import org.apache.http.HttpStatus;
 import org.apache.http.auth.UsernamePasswordCredentials;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -92,7 +94,7 @@ public final class NetworkConnectionImpl {
     public static ConnectionResult execute(Context context, String urlValue, Method method,
             HashMap<String, String> parameterMap, HashMap<String, String> headerMap,
             boolean isGzipEnabled, String userAgent, String postText,
-            UsernamePasswordCredentials credentials, boolean isSslValidationEnabled) throws
+            UsernamePasswordCredentials credentials, String sessionId, Bitmap uploadImage, boolean isSslValidationEnabled) throws
             ConnectionException {
         HttpURLConnection connection = null;
         try {
@@ -110,6 +112,9 @@ public final class NetworkConnectionImpl {
             headerMap.put(ACCEPT_CHARSET_HEADER, UTF8_CHARSET);
             if (credentials != null) {
                 headerMap.put(AUTHORIZATION_HEADER, createAuthenticationHeader(credentials));
+            }
+            if (sessionId != null){
+            	headerMap.put(AUTHORIZATION_HEADER, createAuthWithSession(sessionId));
             }
 
             StringBuilder paramBuilder = new StringBuilder();
@@ -152,11 +157,11 @@ public final class NetworkConnectionImpl {
             String outputText = null;
             switch (method) {
                 case GET:
-                case DELETE:
-                case PUT:
                     url = new URL(urlValue + "?" + paramBuilder.toString());
                     connection = (HttpURLConnection) url.openConnection();
                     break;
+                case DELETE:
+                case PUT:
                 case POST:
                     url = new URL(urlValue);
                     connection = (HttpURLConnection) url.openConnection();
@@ -164,8 +169,8 @@ public final class NetworkConnectionImpl {
 
                     if (paramBuilder.length() > 0) {
                         outputText = paramBuilder.toString();
-                        headerMap.put(CONTENT_TYPE_HEADER, "application/x-www-form-urlencoded");
                     } else if (postText != null) {
+                    	headerMap.put(CONTENT_TYPE_HEADER, "application/json");
                         outputText = postText;
                     }
                     break;
@@ -181,7 +186,11 @@ public final class NetworkConnectionImpl {
                 httpsConnection.setSSLSocketFactory(getAllHostsValidSocketFactory());
                 httpsConnection.setHostnameVerifier(getAllHostsValidVerifier());
             }
-
+            
+            if (method == Method.PUT && uploadImage != null){
+            	headerMap.put(CONTENT_TYPE_HEADER, "image/jpeg");
+            }
+            
             // Add the headers
             if (!headerMap.isEmpty()) {
                 for (Entry<String, String> header : headerMap.entrySet()) {
@@ -192,9 +201,28 @@ public final class NetworkConnectionImpl {
             // Set the connection and read timeout
             connection.setConnectTimeout(OPERATION_TIMEOUT);
             connection.setReadTimeout(OPERATION_TIMEOUT);
-
+            
+            
+            
             // Set the outputStream content for POST requests
-            if (method == Method.POST && outputText != null) {
+            if (method == Method.PUT && uploadImage != null){
+                OutputStream output = null;
+                try {
+                	ByteArrayOutputStream stream=new ByteArrayOutputStream();
+                	uploadImage.compress(Bitmap.CompressFormat.JPEG, 90, stream);
+                    output = connection.getOutputStream();
+                    output.write(stream.toByteArray());
+                } finally {
+                    if (output != null) {
+                        try {
+                            output.close();
+                        } catch (IOException e) {
+                            // Already catching the first IOException so nothing to do here.
+                        }
+                    }
+                }
+            }
+            else if ((method == Method.POST || method == Method.PUT || method == Method.DELETE) && outputText != null) {
                 OutputStream output = null;
                 try {
                     output = connection.getOutputStream();
@@ -260,7 +288,11 @@ public final class NetworkConnectionImpl {
         }
     }
 
-    private static String createAuthenticationHeader(UsernamePasswordCredentials credentials) {
+    private static String createAuthWithSession(String sessionId) {
+        return "Token " + sessionId;
+    }
+
+	private static String createAuthenticationHeader(UsernamePasswordCredentials credentials) {
         StringBuilder sb = new StringBuilder();
         sb.append(credentials.getUserName()).append(":").append(credentials.getPassword());
         return "Basic " + Base64.encodeToString(sb.toString().getBytes(), Base64.NO_WRAP);
